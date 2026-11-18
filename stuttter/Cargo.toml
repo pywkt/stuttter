@@ -1,0 +1,59 @@
+[package]
+name = "stuttter"
+description = "CLAP stutter / tape-stop audio effect"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+# cdylib for the CLAP export; lib so tests and other crates can link the modules.
+crate-type = ["cdylib", "lib"]
+
+[features]
+# On by default so debug and `cargo test` builds panic on any allocation inside
+# process(); nice-plug itself no-ops the assertion in release builds.
+default = ["assert_process_allocs"]
+assert_process_allocs = ["nice-plug/assert_process_allocs"]
+
+[dependencies]
+# nice-plug's own defaults are ["editor", "vst3", "tracing-subscriber"] — vst3 is
+# ON by default and this project is CLAP-only, so features are listed explicitly.
+# `zstd` compresses the saved state.
+nice-plug = { version = "=0.4.2", default-features = false, features = ["editor", "zstd"] }
+nice-plug-egui = "=0.6.0"           # keep its default `opengl` backend
+# A direct dependency because nice-plug-egui does not re-export egui, and the
+# `NiceEguiApp` trait is implemented in terms of `egui::Ui`/`egui::Context` —
+# so the version must match the one nice-plug-egui 0.6 builds against exactly.
+# `default_fonts` is ours to enable: egui bundles no font unless an integration
+# asks for it, and egui-baseview deliberately does not, so without this the
+# editor draws no text at all.
+egui = { version = "=0.37.0", features = ["default_fonts"] }
+basedrop = "=0.1.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Not used directly: pinned because it is the window library under
+# nice-plug-egui. 0.4.2 stopped listening for the host window being resized,
+# and Bitwig resizes its plugin window without telling the plugin, so on 0.4.2
+# dragging Bitwig's window edge left the editor its old size inside a larger
+# black frame. 0.4.1 hears the host window change and follows it (bitstep is
+# on 0.4.1 too). Check that before letting this move.
+baseview = "=0.4.1"
+
+# Passing Space and shortcut keys from the editor window on to Bitwig
+# (`editor/keys.rs`): baseview's X11 backend drops keys the editor ignores.
+# Both are already in the tree through baseview, pinned to its versions —
+# `raw-window-handle` must be the same copy for its trait to apply.
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = "=0.13.2"
+raw-window-handle = "=0.6.2"
+
+[dev-dependencies]
+# The forbid half of nice-plug's no-alloc assertion. nice-plug installs this
+# crate's `AllocDisabler` as the global allocator (behind our
+# `assert_process_allocs` feature) but keeps its own `assert_no_alloc` wrapper
+# crate-private, so the tests call the crate directly. The version is pinned to
+# nice-plug's own requirement so cargo resolves one shared copy — the forbid
+# counter is a thread-local of *that* copy, and a second one would leave the
+# guard inert.
+nice-assert-no-alloc = "=1.0.0"
